@@ -1,0 +1,15 @@
+﻿@page "/calendars"
+
+
+@using BlazorSample.Pages.Components
+@using Microsoft.Identity.Web
+@using Microsoft.Graph
+@inject Microsoft.Graph.GraphServiceClient GraphServiceClient
+@inject MicrosoftIdentityConsentAndConditionalAccessHandler ConsentHandler
+
+<h1>Take control of your bills.</h1>
+
+<p>This component fetches your data into this Calendar.</p>
+
+<Calendar></Calendar>
+

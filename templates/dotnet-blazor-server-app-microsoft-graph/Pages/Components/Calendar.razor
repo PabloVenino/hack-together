@@ -1,0 +1,247 @@
+@using System.Globalization
+@using Microsoft.Graph
+@using Microsoft.Identity.Web;
+@inject Microsoft.Graph.GraphServiceClient GraphServiceClient
+@inject MicrosoftIdentityConsentAndConditionalAccessHandler ConsentHandler 
+
+<style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: auto;
+        font-size: 14px;
+        padding: 5px;
+        height: 100%;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 5px;
+        text-align: center;
+    }
+
+    th {
+        background-color: #f2f2f2;
+    }
+
+    td.today {
+        background-color: lightblue;
+    }
+
+    .disabled {
+        background-color: lightgrey;
+        color: #888;
+    }
+
+    .has-event{
+        background-color: black;
+        color: white;
+    }
+</style>
+
+@if(user == null)
+{
+    <h2>Loading your information, please wait a lil bit :)</h2>
+}
+else
+{
+    <h1>Welcome @user.DisplayName !</h1>
+}
+
+<div>
+    <button @onclick="() => CurrentDate = CurrentDate.AddMonths(-1)">Previous</button>
+    <button @onclick="() => CurrentDate = CurrentDate.AddMonths(1)">Next</button>
+    <br />
+</div>
+
+
+<table>
+    <thead>
+        <tr>
+            <th colspan="7">@MonthYear</th>
+        </tr>
+        <tr>
+            <th>Sun</th>
+            <th>Mon</th>
+            <th>Tue</th>
+            <th>Wed</th>
+            <th>Thu</th>
+            <th>Fri</th>
+            <th>Sat</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var week in Weeks)
+        {
+            <tr>
+                @foreach (var day in week)
+                {
+                    DateTime date;
+                    if (day == 0)
+                    {
+                        date = DateTime.MinValue;
+                    }
+                    else
+                    {
+                        date = new DateTime(CurrentDate.Year, CurrentDate.Month, day);
+                    }
+
+                    bool isEvent = false;
+                    if (_calendar != null)
+                    {
+                        foreach (var Event in _calendar)
+                        {
+                            if (Event != null && Convert.ToDateTime(Event.Start.DateTime) == date.Date)
+                            {
+                                isEvent = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    <td class=" @(day == 0 ? "disabled" : "") 
+                                @(isEvent ? "has-event" : "") 
+                                @(date == DateTime.Today ? "today" : "")">
+                        @if (day != 0)
+                        {
+                            @day
+                        }
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+
+    User? user;
+    IUserCalendarViewCollectionPage? calendar;
+
+    private IUserCalendarViewCollectionPage? _calendar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            user = await GraphServiceClient.Me.Request().GetAsync();
+            calendar = await GraphServiceClient.Me.CalendarView
+                .Request(new List<QueryOption>
+                {
+                    new QueryOption("startDateTime", DateTime.Now.AddDays(-15).ToString("yyyy-MM-ddTHH:mm:ssZ")),
+                    new QueryOption("endDateTime", DateTime.Now.AddDays(15).ToString("yyyy-MM-ddTHH:mm:ssZ"))
+                })
+                .Select(calendarOpt => new
+                {
+                    calendarOpt.Id,
+                    calendarOpt.Subject,
+                    calendarOpt.Start,
+                    calendarOpt.End,
+                    calendarOpt.Recurrence
+                })
+                .GetAsync();
+        }
+        catch (Exception ex)
+        {
+            ConsentHandler.HandleException(ex);
+        }
+        finally
+        {
+            _calendar = calendar;
+            GenerateCalendar();
+        }
+    }
+
+    private DateTime _currentDate = DateTime.Now;
+    private List<List<int>> _weeks = new();
+
+    [Parameter]
+    public List<Event>? Events { get; set; }
+
+    private DateTime CurrentDate
+    {
+        get => _currentDate;
+        set
+        {
+            if (_currentDate != value)
+            {
+                _currentDate = value;
+                GenerateCalendar();
+            }
+        }
+    }
+
+    private List<List<int>> Weeks
+    {
+        get => _weeks;
+        set
+        {
+            if (_weeks != value)
+            {
+                _weeks = value;
+            }
+        }
+    }
+
+    private string MonthYear => CurrentDate.ToString("MMMM yyyy");
+
+    private void GenerateCalendar()
+    {
+        var firstDayOfMonth = new DateTime(CurrentDate.Year, CurrentDate.Month, 1);
+        var daysInMonth = DateTime.DaysInMonth(CurrentDate.Year, CurrentDate.Month);
+        var firstDayOfWeek = (int)firstDayOfMonth.DayOfWeek;
+        var lastDayOfWeek = (int)new DateTime(CurrentDate.Year, CurrentDate.Month, daysInMonth).DayOfWeek;
+        var weeks = new List<List<int>>();
+        var days = new List<int>();
+        for (var i = 1; i <= firstDayOfWeek; i++)
+        {
+            days.Add(0);
+        }
+        for (var i = 1; i <= daysInMonth; i++)
+        {
+            if (days.Count == 7)
+            {
+                weeks.Add(days);
+                days = new List<int>();
+            }
+            days.Add(i);
+        }
+        for (var i = lastDayOfWeek + 1; i <= 6; i++)
+        {
+            days.Add(0);
+        }
+        weeks.Add(days);
+        Weeks = weeks;
+
+        foreach(var week in weeks)
+        {
+            foreach(var day in week)
+            {
+                DateTime date;
+                if (day == 0)
+                {
+                    date = DateTime.MinValue;
+                }
+                else
+                {
+                    date = new DateTime(CurrentDate.Year, CurrentDate.Month, day);
+                }
+
+                bool isEvent = false;
+                if (_calendar != null)
+                {
+                    foreach (var Event in _calendar)
+                    {
+                        if (Event != null && Convert.ToDateTime(Event.Start.DateTime) == date.Date)
+                        {
+                            isEvent = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
